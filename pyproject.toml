@@ -5,4 +5,13 @@ description = "Add your description here"
 requires-python = ">=3.12"
 dependencies = [
     "data-designer>=0.1.4",
+    "dotenv>=0.9.9",
 ]
+
+
+[project.scripts]
+api="bella_tracer_v2.main:run"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"

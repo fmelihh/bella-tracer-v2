@@ -3,4 +3,6 @@ name = "bella-tracer-v2"
 version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "data-designer>=0.1.4",
+]

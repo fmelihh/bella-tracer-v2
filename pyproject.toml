@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "data-designer>=0.1.4",
     "dotenv>=0.9.9",
+    "notebook>=7.5.0",
 ]
 
 

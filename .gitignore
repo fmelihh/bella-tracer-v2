@@ -3,9 +3,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Sandbox Python Notebook for development
-*.ipynb
-
 # PRP markdown files
 .PRPs/
 

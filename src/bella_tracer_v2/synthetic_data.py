@@ -1,5 +1,7 @@
 import os
-from typing import Optional, Any
+from typing import Optional
+
+import pandas as pd
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from data_designer.essentials import (
@@ -15,48 +17,52 @@ from data_designer.essentials import (
 
 load_dotenv()
 
+
 class MetadataItem(BaseModel):
     key: str
     value: str
 
+
 class LogEntry(BaseModel):
     trace_id: str = Field(
         ...,
-        description="A unique UUID v4 string identifying the entire transaction. MUST be identical for every log in this list."
+        description="A unique UUID v4 string identifying the entire transaction. MUST be identical for every log in this list.",
     )
     span_id: str = Field(
         ...,
-        description="A unique hexadecimal string (e.g., 16 chars) identifying this specific unit of work/operation."
+        description="A unique hexadecimal string (e.g., 16 chars) identifying this specific unit of work/operation.",
     )
     parent_span_id: Optional[str] = Field(
         default=None,
-        description="The span_id of the service that called this service. Must be null/None for the root/entry-point service."
+        description="The span_id of the service that called this service. Must be null/None for the root/entry-point service.",
     )
     service_name: str = Field(
         ...,
-        description="The identifier of the microservice (e.g., 'payment-service', 'auth-api')."
+        description="The identifier of the microservice (e.g., 'payment-service', 'auth-api').",
     )
     timestamp: str = Field(
         ...,
-        description="ISO 8601 formatted timestamp (e.g., '2023-10-27T10:00:00.123Z'). Ensure timestamps strictly follow causal order (parents start before children)."
+        description="ISO 8601 formatted timestamp (e.g., '2023-10-27T10:00:00.123Z'). Ensure timestamps strictly follow causal order (parents start before children).",
     )
     level: str = Field(
         ...,
-        description="The severity level of the log. Allowed values: DEBUG, INFO, WARN, ERROR, CRITICAL."
+        description="The severity level of the log. Allowed values: DEBUG, INFO, WARN, ERROR, CRITICAL.",
     )
     message: str = Field(
         ...,
-        description="A human-readable text description of the event (e.g., 'Processing payment', 'Database connection timeout')."
+        description="A human-readable text description of the event (e.g., 'Processing payment', 'Database connection timeout').",
     )
     metadata: list[MetadataItem] = Field(
         default_factory=list,
-        description="A list of max 3-5 key-value pairs relevant to the log (e.g., key='http.method', value='POST')."
+        description="A list of max 3-5 key-value pairs relevant to the log (e.g., key='http.method', value='POST').",
     )
+
 
 class TraceOutput(BaseModel):
     logs: list[LogEntry]
 
-def generate_complex_traces(num_records: int = 20):
+
+def generate_complex_traces(num_records: int = 50) -> pd.DataFrame:
     # 1. Setup Provider
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -160,9 +166,7 @@ def generate_complex_traces(num_records: int = 20):
 
     # Save
     df = dataset.load_dataset()
-    df.to_json("complex_traces.jsonl", orient="records", lines=True)
-    print("Done! Data saved to complex_traces.jsonl")
+    return df
 
 
-if __name__ == "__main__":
-    generate_complex_traces()
+__all__ = ["generate_complex_traces"]

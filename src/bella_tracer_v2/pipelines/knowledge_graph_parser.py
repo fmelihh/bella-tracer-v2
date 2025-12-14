@@ -36,9 +36,9 @@ def create_narrative_from_trace(trace: dict[str, Any]) -> str:
     narrative_text += f"--- START TRACE: {trace_id} ---\n"
     narrative_text += "Events Sequence:\n"
 
-    service = log.get("service_name", "unknown-service")
-    level = log.get("level", "INFO")
-    msg = log.get("message", "")
+    service = trace.get("service_name", "unknown-service")
+    level = trace.get("level", "INFO")
+    msg = trace.get("message", "")
 
     pod_id = "unknown-pod"
     context_details = []

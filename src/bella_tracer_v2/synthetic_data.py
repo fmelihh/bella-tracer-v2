@@ -3,7 +3,6 @@ from typing import Optional
 
 import pandas as pd
 from pydantic import BaseModel, Field
-from dotenv import load_dotenv
 from data_designer.essentials import (
     DataDesigner,
     DataDesignerConfigBuilder,
@@ -14,8 +13,6 @@ from data_designer.essentials import (
     ModelConfig,
     LLMStructuredColumnConfig,
 )
-
-load_dotenv()
 
 
 class MetadataItem(BaseModel):

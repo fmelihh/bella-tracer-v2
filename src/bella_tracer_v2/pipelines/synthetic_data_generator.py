@@ -5,7 +5,7 @@ from bella_tracer_v2 import synthetic_data, services
 
 @flow(name="synthetic-data-generator")
 async def synthetic_data_generator_pipeline():
-    df = synthetic_data.generate_complex_traces(num_records=50)
+    df = synthetic_data.generate_complex_traces(num_records=20)
 
     print("Starting Producer...")
     producer = await services.kafka.retrieve_aio_kafka_producer()

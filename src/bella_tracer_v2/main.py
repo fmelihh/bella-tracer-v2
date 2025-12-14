@@ -1,4 +1,8 @@
+from dotenv import load_dotenv
 from bella_tracer_v2 import pipelines
+
+
+load_dotenv()
 
 
 def run_synthetic_data_generator_pipeline():

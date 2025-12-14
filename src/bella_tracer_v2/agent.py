@@ -139,7 +139,7 @@ async def extract_dates_node(state: GraphState):
 async def retrieval_node(state: GraphState):
     print("--- STEP 3: Retrieving with Graph Traversal ---")
     query_text = state["optimized_question"]
-    filters = state["extracted_filters"]
+    filters = state["extracted_filters"] if state["extracted_filters"] else {}
 
     driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USERNAME, NEO4J_PASSWORD))
 
@@ -152,13 +152,16 @@ async def retrieval_node(state: GraphState):
         CALL db.index.vector.queryNodes('log_vector_index', 15, $embedding)
         YIELD node AS targetLog, score
 
+        // --- TARİH FİLTRESİ EKLEMESİ ---
+        WHERE ($start_date IS NULL OR targetLog.timestamp >= $start_date)
+          AND ($end_date IS NULL OR targetLog.timestamp <= $end_date)
+
         // 2. ADIM: Context Genişletme (Service, Pod, Trace, Scenario)
         MATCH (targetLog)-[:EMITTED_BY]->(service:Service)
         OPTIONAL MATCH (targetLog)-[:RUNNING_ON]->(pod:Pod)
         OPTIONAL MATCH (targetLog)-[:PART_OF_TRACE]->(trace:Trace)-[:IS_SCENARIO]->(scenario:Scenario)
 
         // 3. ADIM: ROOT CAUSE ANALİZİ (Dependency Traversal)
-        // Bu logdan önce aynı trace içinde oluşan ERROR/WARN loglarını çek.
         OPTIONAL MATCH (trace)<-[:PART_OF_TRACE]-(priorLog:LogEntry)
         WHERE priorLog.timestamp < targetLog.timestamp 
           AND priorLog.level IN ['ERROR', 'CRITICAL', 'WARN']
@@ -175,7 +178,7 @@ async def retrieval_node(state: GraphState):
             pod.id AS pod_id,
             trace.trace_id AS trace_id,
             scenario.name AS scenario,
-            
+
             // Kök neden adaylarını birleştir
             collect(DISTINCT {
                 service: causeService.name,
@@ -186,19 +189,19 @@ async def retrieval_node(state: GraphState):
             score
         ORDER BY score DESC
         """
+
         records, _, _ = driver.execute_query(
             cypher_query,
             {
                 "embedding": query_vector,
-                # Tarih filtresi metadata'da varsa buraya eklenebilir
-                # "start_date": filters.get("start_date")
+                "start_date": filters.get("start_date"),
+                "end_date": filters.get("end_date"),
             },
             database_="neo4j",
         )
 
         docs = []
         for record in records:
-            # Yapısal graph verisini LLM'in okuyabileceği hikayeye çevir
             content = (
                 f"Log Event: '{record['log_message']}' (Level: {record['log_level']})\n"
                 f"Source: Service '{record['service_name']}' on Pod '{record['pod_id']}'\n"
@@ -206,12 +209,11 @@ async def retrieval_node(state: GraphState):
                 f"Scenario: {record['scenario']}\n"
             )
 
-            # Root Cause Adayları
             root_causes = [
                 rc for rc in record["potential_root_causes"] if rc["message"]
             ]
             if root_causes:
-                content += "⚠️ POTENTIAL ROOT CAUSES (Preceding errors in this trace):\n"
+                content += "POTENTIAL ROOT CAUSES (Preceding errors in this trace):\n"
                 for rc in root_causes:
                     content += f"  - Service '{rc['service']}' logged {rc['level']}: '{rc['message']}'\n"
             else:

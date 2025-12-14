@@ -26,20 +26,14 @@ PATTERNS = [
 ]
 
 
-def create_narrative_from_trace(item: dict[str, Any]) -> str:
+def create_narrative_from_trace(logs: list[dict[str, Any]]) -> str:
     narrative_text = "OBSERVABILITY LOG ANALYSIS (SINGLE TRACE):\n\n"
-
-    trace_data = item.get("trace_data", {})
-    logs = trace_data.get("logs", [])
-    scenario = item.get("scenario", "Unknown Scenario")
-
     if not logs:
         return ""
 
     trace_id = logs[0].get("trace_id", "unknown-trace")
 
     narrative_text += f"--- START TRACE: {trace_id} ---\n"
-    narrative_text += f"Scenario Context: {scenario}\n"
     narrative_text += "Events Sequence:\n"
 
     for log in logs:
@@ -151,7 +145,7 @@ async def knowledge_graph_parser():
     logger.info(f"Connecting to Kafka topic: {KAFKA_TOPIC} for STREAM processing")
 
     consumer = await retrieve_aio_kafka_consumer(
-        KAFKA_TOPIC, consumer_group="graph_rag_group_stream_v1"
+        KAFKA_TOPIC, consumer_group="graph_rag_group_stream_v2"
     )
     await consumer.start()
 

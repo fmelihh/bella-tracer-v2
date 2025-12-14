@@ -88,13 +88,13 @@ def create_narrative_from_trace(logs: list[dict[str, Any]]) -> str:
 
 
 @task(name="process_single_trace", retries=2, retry_delay_seconds=2)
-async def process_single_trace(data: dict[str, Any]):
+async def process_single_trace(logs: list[dict[str, Any]]):
     logger = get_run_logger()
 
-    if not data:
+    if not logs:
         return
 
-    text_content = create_narrative_from_trace(data)
+    text_content = create_narrative_from_trace(logs)
     if not text_content:
         logger.warning("No logs found in trace data, skipping.")
         return
@@ -102,9 +102,7 @@ async def process_single_trace(data: dict[str, Any]):
     driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USERNAME, NEO4J_PASSWORD))
 
     try:
-        trace_id = (
-            data.get("trace_data", {}).get("logs", [{}])[0].get("trace_id", "unknown")
-        )
+        trace_id = logs[0].get("trace_id", "unknown")
         logger.info(f"Processing single trace: {trace_id}")
 
         embedder = OpenAIEmbeddings(model="text-embedding-3-large")

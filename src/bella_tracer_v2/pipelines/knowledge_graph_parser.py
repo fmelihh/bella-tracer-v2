@@ -142,7 +142,7 @@ async def knowledge_graph_parser():
     logger.info(f"Connecting to Kafka topic: {KAFKA_TOPIC} for STREAM processing")
 
     consumer = await retrieve_aio_kafka_consumer(
-        KAFKA_TOPIC, consumer_group="graph_rag_group_stream_v2"
+        KAFKA_TOPIC, consumer_group="graph_rag_group_stream_v3"
     )
     await consumer.start()
 

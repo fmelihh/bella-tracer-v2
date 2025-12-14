@@ -14,7 +14,7 @@ async def synthetic_data_generator_pipeline():
     for i, row in df.iterrows():
         print(f"Processing row {i}, {df['call_graph_pattern']}, {df['scenario']}")
 
-        data = row["trace_data"]
+        data = row["trace_data"]["logs"]
         for record in data:
             try:
                 record = json.dumps(record).encode("utf-8")

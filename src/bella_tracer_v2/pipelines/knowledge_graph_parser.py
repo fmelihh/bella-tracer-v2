@@ -118,7 +118,7 @@ async def process_single_trace(trace: dict[str, Any]):
             llm=llm,
             driver=driver,
             embedder=embedder,
-            schema={
+            potential_schema={
                 "node_types": NODE_TYPES,
                 "relationship_types": REL_TYPES,
                 "patterns": PATTERNS,

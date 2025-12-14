@@ -22,6 +22,7 @@ dependencies = [
 api="bella_tracer_v2.main:run"
 knowledge_graph_parser_pipeline="bella_tracer_v2.main:run_knowledge_graph_parser_pipeline"
 synthetic_data_generator_pipeline="bella_tracer_v2.main:run_synthetic_data_generator_pipeline"
+create_neo4j_index="bella_tracer_v2.main:create_neo4j_index"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

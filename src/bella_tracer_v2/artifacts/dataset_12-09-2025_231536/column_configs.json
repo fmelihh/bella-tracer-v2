@@ -1,0 +1,128 @@
+[
+    {
+        "columns": [
+            {
+                "name": "call_graph_pattern",
+                "drop": false,
+                "column_type": "sampler",
+                "sampler_type": "category",
+                "params": {
+                    "values": [
+                        "E-Commerce Checkout (Gateway -> Auth -> Order -> Payment & Inventory)",
+                        "Search Aggregation (Gateway -> SearchOrchestrator -> [Service A, Service B, Service C] in parallel)",
+                        "Async Report Generation (API -> Queue -> Worker -> S3 & EmailService)",
+                        "User Onboarding (Gateway -> Auth -> UserDB -> Notification -> Analytics)"
+                    ],
+                    "weights": null,
+                    "sampler_type": "category"
+                },
+                "conditional_params": {},
+                "convert_to": null
+            },
+            {
+                "name": "scenario",
+                "drop": false,
+                "column_type": "sampler",
+                "sampler_type": "category",
+                "params": {
+                    "values": [
+                        "Cascading Failure: Database slow-down causes timeouts in upstream services",
+                        "Retry Storm: Payment service fails intermittently, causing OrderService to retry 3 times",
+                        "Partial Failure: Search works but 'Service B' returns error (Graceful degradation)",
+                        "Race Condition: Two requests modify UserDB simultaneously (Optimistic Locking Failure)",
+                        "Happy Path: Successful execution with high latency in one specific node"
+                    ],
+                    "weights": null,
+                    "sampler_type": "category"
+                },
+                "conditional_params": {},
+                "convert_to": null
+            }
+        ],
+        "constraints": [],
+        "max_rejections_factor": 5
+    },
+    {
+        "name": "trace_data",
+        "drop": false,
+        "column_type": "llm-structured",
+        "prompt": "\n    You are a Distributed Tracing Engine Generator.\n\n    TASK:\n    Generate a highly detailed distributed trace (a list of log entries) for the following architecture:\n    **Architecture Pattern**: {{ call_graph_pattern }}\n    **Scenario/Incident**: {{ scenario }}\n\n    REQUIREMENTS:\n    1. **Topology**: You must simulate MULTIPLE distinct services (at least 4-6 services) interacting based on the pattern.\n    2. **Causality**: Use `span_id` and `parent_span_id` to strictly define the call graph.\n       - The entry point service has `parent_span_id: null`.\n       - If Svc A calls Svc B, Svc B's `parent_span_id` MUST be Svc A's `span_id`.\n    3. **Complexity**: \n       - Include strictly paired logs: \"Starting request\" AND \"Finished request\" for each span.\n       - If the scenario involves retries, show the repeated calls with new span IDs but same parent.\n       - Include \"Network Latency\" by adjusting timestamps realistically (e.g. child finishes 200ms after start).\n    4. **Data Content**:\n       - `trace_id`: MUST be identical for ALL logs in this list (Use a UUID).\n       - `service_name`: distinct names (e.g., 'checkout-api', 'payment-svc-v1').\n       - `metadata`: Add relevant keys like `http.status`, `db.statement`, `retry_count`, `pod_id`.\n\n    OUTPUT FORMAT:\n    Return ONLY a valid JSON List of objects. No markdown.\n    Example Object:\n    {\n      \"trace_id\": \"uuid...\",\n      \"span_id\": \"s1\",\n      \"parent_span_id\": null,\n      \"service_name\": \"gateway\",\n      \"timestamp\": \"2023-10-27T10:00:00.000Z\",\n      \"level\": \"INFO\",\n      \"message\": \"Received checkout request\",\n      \"metadata\": {\"user_id\": \"123\", \"http.method\": \"POST\"}\n    }\n    ",
+        "model_alias": "gpt-structured",
+        "system_prompt": null,
+        "multi_modal_context": null,
+        "output_format": {
+            "$defs": {
+                "LogEntry": {
+                    "properties": {
+                        "trace_id": {
+                            "title": "Trace Id",
+                            "type": "string"
+                        },
+                        "span_id": {
+                            "title": "Span Id",
+                            "type": "string"
+                        },
+                        "parent_span_id": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Parent Span Id"
+                        },
+                        "service_name": {
+                            "title": "Service Name",
+                            "type": "string"
+                        },
+                        "timestamp": {
+                            "title": "Timestamp",
+                            "type": "string"
+                        },
+                        "level": {
+                            "title": "Level",
+                            "type": "string"
+                        },
+                        "message": {
+                            "title": "Message",
+                            "type": "string"
+                        },
+                        "metadata": {
+                            "additionalProperties": true,
+                            "title": "Metadata",
+                            "type": "object"
+                        }
+                    },
+                    "required": [
+                        "trace_id",
+                        "span_id",
+                        "parent_span_id",
+                        "service_name",
+                        "timestamp",
+                        "level",
+                        "message",
+                        "metadata"
+                    ],
+                    "title": "LogEntry",
+                    "type": "object"
+                }
+            },
+            "properties": {
+                "logs": {
+                    "items": {
+                        "$ref": "#/$defs/LogEntry"
+                    },
+                    "title": "Logs",
+                    "type": "array"
+                }
+            },
+            "required": [
+                "logs"
+            ],
+            "title": "TraceOutput",
+            "type": "object"
+        }
+    }
+]

@@ -1,0 +1,155 @@
+[
+    {
+        "columns": [
+            {
+                "name": "call_graph_pattern",
+                "drop": false,
+                "column_type": "sampler",
+                "sampler_type": "category",
+                "params": {
+                    "values": [
+                        "E-Commerce Checkout (Gateway -> Auth -> Order -> Payment & Inventory)",
+                        "Search Aggregation (Gateway -> SearchOrchestrator -> [Service A, Service B, Service C] in parallel)",
+                        "Async Report Generation (API -> Queue -> Worker -> S3 & EmailService)",
+                        "User Onboarding (Gateway -> Auth -> UserDB -> Notification -> Analytics)"
+                    ],
+                    "weights": null,
+                    "sampler_type": "category"
+                },
+                "conditional_params": {},
+                "convert_to": null
+            },
+            {
+                "name": "scenario",
+                "drop": false,
+                "column_type": "sampler",
+                "sampler_type": "category",
+                "params": {
+                    "values": [
+                        "Cascading Failure: Database slow-down causes timeouts in upstream services",
+                        "Retry Storm: Payment service fails intermittently, causing OrderService to retry 3 times",
+                        "Partial Failure: Search works but 'Service B' returns error (Graceful degradation)",
+                        "Race Condition: Two requests modify UserDB simultaneously (Optimistic Locking Failure)",
+                        "Happy Path: Successful execution with high latency in one specific node"
+                    ],
+                    "weights": null,
+                    "sampler_type": "category"
+                },
+                "conditional_params": {},
+                "convert_to": null
+            }
+        ],
+        "constraints": [],
+        "max_rejections_factor": 5
+    },
+    {
+        "name": "trace_data",
+        "drop": false,
+        "column_type": "llm-structured",
+        "prompt": "\n    You are a Distributed Tracing Engine Generator.\n\n    TASK:\n    Generate a highly detailed distributed trace (a list of log entries) for the following architecture:\n    **Architecture Pattern**: {{ call_graph_pattern }}\n    **Scenario/Incident**: {{ scenario }}\n\n    REQUIREMENTS:\n    1. **Topology**: You must simulate MULTIPLE distinct services (at least 4-6 services) interacting based on the pattern.\n    2. **Causality**: Use `span_id` and `parent_span_id` to strictly define the call graph.\n       - The entry point service has `parent_span_id: null`.\n       - If Svc A calls Svc B, Svc B's `parent_span_id` MUST be Svc A's `span_id`.\n    3. **Complexity**: \n       - Include strictly paired logs: \"Starting request\" AND \"Finished request\" for each span.\n       - If the scenario involves retries, show the repeated calls with new span IDs but same parent.\n       - Include \"Network Latency\" by adjusting timestamps realistically (e.g. child finishes 200ms after start).\n    4. **Data Content**:\n       - `trace_id`: MUST be identical for ALL logs in this list (Use a UUID).\n       - `service_name`: distinct names (e.g., 'checkout-api', 'payment-svc-v1').\n       - `metadata`: Add relevant keys like `http.status`, `db.statement`, `retry_count`, `pod_id`.\n    \n    Output the data strictly adhering to the provided `TraceOutput` schema.\n    ",
+        "model_alias": "gpt-structured",
+        "system_prompt": null,
+        "multi_modal_context": null,
+        "output_format": {
+            "$defs": {
+                "LogEntry": {
+                    "properties": {
+                        "trace_id": {
+                            "description": "A unique UUID v4 string identifying the entire transaction. MUST be identical for every log in this list.",
+                            "title": "Trace Id",
+                            "type": "string"
+                        },
+                        "span_id": {
+                            "description": "A unique hexadecimal string (e.g., 16 chars) identifying this specific unit of work/operation.",
+                            "title": "Span Id",
+                            "type": "string"
+                        },
+                        "parent_span_id": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "default": null,
+                            "description": "The span_id of the service that called this service. Must be null/None for the root/entry-point service.",
+                            "title": "Parent Span Id"
+                        },
+                        "service_name": {
+                            "description": "The identifier of the microservice (e.g., 'payment-service', 'auth-api').",
+                            "title": "Service Name",
+                            "type": "string"
+                        },
+                        "timestamp": {
+                            "description": "ISO 8601 formatted timestamp (e.g., '2023-10-27T10:00:00.123Z'). Ensure timestamps strictly follow causal order (parents start before children).",
+                            "title": "Timestamp",
+                            "type": "string"
+                        },
+                        "level": {
+                            "description": "The severity level of the log. Allowed values: DEBUG, INFO, WARN, ERROR, CRITICAL.",
+                            "title": "Level",
+                            "type": "string"
+                        },
+                        "message": {
+                            "description": "A human-readable text description of the event (e.g., 'Processing payment', 'Database connection timeout').",
+                            "title": "Message",
+                            "type": "string"
+                        },
+                        "metadata": {
+                            "description": "A list of max 3-5 key-value pairs relevant to the log (e.g., key='http.method', value='POST').",
+                            "items": {
+                                "$ref": "#/$defs/MetadataItem"
+                            },
+                            "title": "Metadata",
+                            "type": "array"
+                        }
+                    },
+                    "required": [
+                        "trace_id",
+                        "span_id",
+                        "service_name",
+                        "timestamp",
+                        "level",
+                        "message"
+                    ],
+                    "title": "LogEntry",
+                    "type": "object"
+                },
+                "MetadataItem": {
+                    "properties": {
+                        "key": {
+                            "title": "Key",
+                            "type": "string"
+                        },
+                        "value": {
+                            "title": "Value",
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "key",
+                        "value"
+                    ],
+                    "title": "MetadataItem",
+                    "type": "object"
+                }
+            },
+            "properties": {
+                "logs": {
+                    "items": {
+                        "$ref": "#/$defs/LogEntry"
+                    },
+                    "title": "Logs",
+                    "type": "array"
+                }
+            },
+            "required": [
+                "logs"
+            ],
+            "title": "TraceOutput",
+            "type": "object"
+        }
+    }
+]

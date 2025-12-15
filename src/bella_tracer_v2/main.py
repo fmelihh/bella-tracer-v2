@@ -1,9 +1,11 @@
 import os
+
+import uvicorn
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
 from neo4j_graphrag.indexes import create_vector_index
-from bella_tracer_v2 import pipelines
 
+from bella_tracer_v2 import api, pipelines
 
 load_dotenv()
 
@@ -35,3 +37,16 @@ def create_neo4j_index():
         similarity_fn="euclidean",
     )
     driver.close()
+
+
+def run_api():
+    uvicorn.run(api.app.app, host="0.0.0.0", port=8000)
+
+
+if __name__ == "__main__":
+    # Uncomment the desired function to run
+
+    # run_synthetic_data_generator_pipeline()
+    # run_knowledge_graph_parser_pipeline()
+    # create_neo4j_index()
+    run_api()

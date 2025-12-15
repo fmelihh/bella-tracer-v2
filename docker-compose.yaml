@@ -57,7 +57,8 @@ services:
       - neo4j_data:/data
     environment:
       - NEO4J_AUTH=neo4j/bella_tracer_test_123
-
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
 volumes:
   prefect_data:
   neo4j_data:

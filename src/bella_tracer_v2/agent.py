@@ -1,17 +1,16 @@
 import os
-from typing import List
+import re
 from datetime import datetime
+from typing import List
 
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-from langgraph.graph import StateGraph, END
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-
-from bella_tracer_v2.models import GraphState, RankingOutput
-
 from neo4j import GraphDatabase
 
+from bella_tracer_v2.models import GraphState, RankingOutput
 
 NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://localhost:7687")
 NEO4J_USERNAME = os.getenv("NEO4J_USERNAME", "neo4j")
@@ -138,94 +137,104 @@ async def extract_dates_node(state: GraphState):
 
 async def retrieval_node(state: GraphState):
     print("--- STEP 3: Retrieving with Graph Traversal ---")
-    query_text = state["optimized_question"]
-    filters = state["extracted_filters"] if state["extracted_filters"] else {}
+    # filters = state["extracted_filters"] if state["extracted_filters"] else {}
+
+    question = state["original_question"]
+    trace_id_match = re.search(
+        r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b",
+        question,
+    )
+    specific_trace_id = trace_id_match.group(0) if trace_id_match else None
 
     driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USERNAME, NEO4J_PASSWORD))
+    docs = []
 
     try:
-        embedding_model = OpenAIEmbeddings(model="text-embedding-3-large")
-        query_vector = await embedding_model.aembed_query(query_text)
+        if specific_trace_id:
+            print(
+                f"--> Trace ID Detected: {specific_trace_id}. Switching to Graph Traversal Mode."
+            )
 
-        cypher_query = """
-        // 1. ADIM: Vektör araması ile Anchor Logları bul
-        CALL db.index.vector.queryNodes('log_vector_index', 15, $embedding)
-        YIELD node AS targetLog, score
+            cypher_query = """
+            MATCH (t:Trace {trace_id: $trace_id})
+            // Trace'e bağlı tüm logları çek
+            MATCH (t)<-[:PART_OF_TRACE]-(log:LogEntry)
+            
+            // Context bilgilerini topla
+            OPTIONAL MATCH (log)-[:EMITTED_BY]->(service:Service)
+            OPTIONAL MATCH (log)-[:RUNNING_ON]->(pod:Pod)
+            OPTIONAL MATCH (t)-[:IS_SCENARIO]->(scenario:Scenario)
 
-        // --- TARİH FİLTRESİ EKLEMESİ ---
-        WHERE ($start_date IS NULL OR targetLog.timestamp >= $start_date)
-          AND ($end_date IS NULL OR targetLog.timestamp <= $end_date)
+            RETURN 
+                log.message AS message,
+                log.level AS level,
+                log.timestamp AS timestamp,
+                service.name AS service,
+                pod.id AS pod,
+                t.trace_id AS trace_id,
+                scenario.name AS scenario,
+                1.0 AS score
+            ORDER BY log.timestamp ASC
+            """
 
-        // 2. ADIM: Context Genişletme (Service, Pod, Trace, Scenario)
-        MATCH (targetLog)-[:EMITTED_BY]->(service:Service)
-        OPTIONAL MATCH (targetLog)-[:RUNNING_ON]->(pod:Pod)
-        OPTIONAL MATCH (targetLog)-[:PART_OF_TRACE]->(trace:Trace)-[:IS_SCENARIO]->(scenario:Scenario)
+            records, _, _ = driver.execute_query(
+                cypher_query, {"trace_id": specific_trace_id}
+            )
 
-        // 3. ADIM: ROOT CAUSE ANALİZİ (Dependency Traversal)
-        OPTIONAL MATCH (trace)<-[:PART_OF_TRACE]-(priorLog:LogEntry)
-        WHERE priorLog.timestamp < targetLog.timestamp 
-          AND priorLog.level IN ['ERROR', 'CRITICAL', 'WARN']
-          AND priorLog <> targetLog
+        # ------------------------------------------------------------------
+        # SENARYO B: Anlamsal Arama (Chunk -> LogEntry Bağlantısı ile)
+        # ------------------------------------------------------------------
+        else:
+            print("--> No Trace ID. Using Vector Search.")
+            embedding_model = OpenAIEmbeddings(model="text-embedding-3-large")
+            query_vector = await embedding_model.aembed_query(
+                state["optimized_question"]
+            )
 
-        OPTIONAL MATCH (priorLog)-[:EMITTED_BY]->(causeService:Service)
+            cypher_query = """
+            CALL db.index.vector.queryNodes('log_vector_index', 10, $embedding)
+            YIELD node AS chunk, score
+            
+            // Varsayım: Entity extraction yapıldıysa LogEntry, Chunk ile bağlantılıdır.
+            MATCH (log:LogEntry)-[:FROM_CHUNK|MENTIONS]->(chunk)
+            
+            MATCH (log)-[:EMITTED_BY]->(service:Service)
+            OPTIONAL MATCH (log)-[:PART_OF_TRACE]->(t:Trace)
+            OPTIONAL MATCH (t)-[:IS_SCENARIO]->(scenario:Scenario)
 
-        // 4. ADIM: Sonuçları Derle
-        RETURN 
-            targetLog.message AS log_message,
-            targetLog.level AS log_level,
-            targetLog.timestamp AS log_time,
-            service.name AS service_name,
-            pod.id AS pod_id,
-            trace.trace_id AS trace_id,
-            scenario.name AS scenario,
+            RETURN 
+                log.message AS message,
+                log.level AS level,
+                log.timestamp AS timestamp,
+                service.name AS service,
+                t.trace_id AS trace_id,
+                scenario.name AS scenario,
+                score
+            ORDER BY score DESC
+            """
+            # NOT: Eğer veritabanınızda Chunk -> LogEntry ilişkisi 'FROM_CHUNK' değilse
+            # (ki default pipeline'da bazen sadece Document-Chunk bağı olur),
+            # o zaman text üzerinden eşleşme yapmak gerekebilir:
+            # WHERE log.message IN chunk.text
 
-            // Kök neden adaylarını birleştir
-            collect(DISTINCT {
-                service: causeService.name,
-                message: priorLog.message,
-                level: priorLog.level,
-                time: priorLog.timestamp
-            }) AS potential_root_causes,
-            score
-        ORDER BY score DESC
-        """
+            records, _, _ = driver.execute_query(
+                cypher_query, {"embedding": query_vector}
+            )
 
-        records, _, _ = driver.execute_query(
-            cypher_query,
-            {
-                "embedding": query_vector,
-                "start_date": filters.get("start_date"),
-                "end_date": filters.get("end_date"),
-            },
-            database_="neo4j",
-        )
-
-        docs = []
         for record in records:
             content = (
-                f"Log Event: '{record['log_message']}' (Level: {record['log_level']})\n"
-                f"Source: Service '{record['service_name']}' on Pod '{record['pod_id']}'\n"
+                f"[{record['timestamp']}] {record['level']} from {record['service']}:\n"
+                f"Message: {record['message']}\n"
                 f"Trace ID: {record['trace_id']}\n"
                 f"Scenario: {record['scenario']}\n"
             )
-
-            root_causes = [
-                rc for rc in record["potential_root_causes"] if rc["message"]
-            ]
-            if root_causes:
-                content += "POTENTIAL ROOT CAUSES (Preceding errors in this trace):\n"
-                for rc in root_causes:
-                    content += f"  - Service '{rc['service']}' logged {rc['level']}: '{rc['message']}'\n"
-            else:
-                content += "No preceding errors found in this trace.\n"
-
-            metadata = {
-                "trace_id": record["trace_id"],
-                "service": record["service_name"],
-                "score": record["score"],
-            }
-
-            docs.append({"text": content, **metadata})
+            docs.append(
+                {
+                    "text": content,
+                    "trace_id": record["trace_id"],
+                    "score": record["score"],
+                }
+            )
 
     except Exception as e:
         print(f"Graph Retrieval Error: {e}")
@@ -300,8 +309,8 @@ def retrieve_graph() -> CompiledStateGraph:
     workflow.add_node("generation", generation_node)
 
     workflow.set_entry_point("optimize_query")
-    workflow.add_edge("optimize_query", "extract_dates")
-    workflow.add_edge("extract_dates", "retrieval")
+    workflow.add_edge("optimize_query", "retrieval")
+    # workflow.add_edge("extract_dates", "retrieval")
     workflow.add_edge("retrieval", "reranking")
     workflow.add_edge("reranking", "generation")
     workflow.add_edge("generation", END)

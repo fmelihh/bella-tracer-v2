@@ -1,5 +1,6 @@
 from fastapi import FastAPI
-from bella_tracer_v2 import models, agent
+
+from bella_tracer_v2 import agent, models
 
 app = FastAPI(title="GraphRAG Observability Service", version="1.0.0")
 

@@ -1,7 +1,9 @@
 import json
+
 import numpy as np
 from prefect import flow
-from bella_tracer_v2 import synthetic_data, services
+
+from bella_tracer_v2 import services, synthetic_data
 
 
 class NumpyEncoder(json.JSONEncoder):

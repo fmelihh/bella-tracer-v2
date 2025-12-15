@@ -1,0 +1,55 @@
+[
+    {
+        "columns": [
+            {
+                "name": "root_service",
+                "drop": false,
+                "column_type": "sampler",
+                "sampler_type": "category",
+                "params": {
+                    "values": [
+                        "PaymentGateway",
+                        "OrderService",
+                        "InventoryDB",
+                        "AuthService",
+                        "NotificationSvc"
+                    ],
+                    "weights": null,
+                    "sampler_type": "category"
+                },
+                "conditional_params": {},
+                "convert_to": null
+            },
+            {
+                "name": "scenario",
+                "drop": false,
+                "column_type": "sampler",
+                "sampler_type": "category",
+                "params": {
+                    "values": [
+                        "High Latency (Timeout)",
+                        "Database Connection Refused",
+                        "Invalid API Key",
+                        "Successful Transaction",
+                        "Memory Leak OOM"
+                    ],
+                    "weights": null,
+                    "sampler_type": "category"
+                },
+                "conditional_params": {},
+                "convert_to": null
+            }
+        ],
+        "constraints": [],
+        "max_rejections_factor": 5
+    },
+    {
+        "name": "raw_trace_json",
+        "drop": false,
+        "column_type": "llm-text",
+        "prompt": "\n    You are a distributed systems simulator. \n    Generate a JSON object representing a distributed trace for a request starting at {{ root_service }}.\n    The scenario is: {{ scenario }}.\n\n    The output must be a valid JSON list of log entries. Each entry must have:\n    - \"trace_id\": (Generate a unique UUID)\n    - \"span_id\": (Unique ID)\n    - \"parent_span_id\": (ID of caller, null if root)\n    - \"service_name\": (Name of the service)\n    - \"timestamp\": (ISO format)\n    - \"level\": (INFO, WARN, ERROR)\n    - \"message\": (Realistic log message)\n    - \"metadata\": { \"http.method\": \"...\", \"db.query\": \"...\" }\n\n    Ensure the logs tell a coherent story where one service calls another, and the error propagates up the stack.\n    Return ONLY the raw JSON list, no markdown formatting.\n    ",
+        "model_alias": "gpt-5",
+        "system_prompt": null,
+        "multi_modal_context": null
+    }
+]

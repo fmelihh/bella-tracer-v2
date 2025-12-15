@@ -1,15 +1,18 @@
-import os
-import json
 import asyncio
+import json
+import os
 from typing import Any
 
+from dotenv import load_dotenv
 from neo4j import GraphDatabase
-from prefect import flow, task, get_run_logger
 from neo4j_graphrag.embeddings import OpenAIEmbeddings
-from neo4j_graphrag.llm import OpenAILLM
 from neo4j_graphrag.experimental.pipeline.kg_builder import SimpleKGPipeline
+from neo4j_graphrag.llm import OpenAILLM
+from prefect import flow, get_run_logger, task
 
 from bella_tracer_v2.services.kafka import retrieve_aio_kafka_consumer
+
+load_dotenv()
 
 KAFKA_TOPIC = "data"
 NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://localhost:7687")
@@ -18,12 +21,6 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 
 NODE_TYPES = ["Service", "Trace", "Scenario", "LogEntry", "Pod"]
 REL_TYPES = ["PART_OF_TRACE", "EMITTED_BY", "RUNNING_ON", "IS_SCENARIO"]
-PATTERNS = [
-    ("LogEntry", "PART_OF_TRACE", "Trace"),
-    ("LogEntry", "EMITTED_BY", "Service"),
-    ("Service", "RUNNING_ON", "Pod"),
-    ("Trace", "IS_SCENARIO", "Scenario"),
-]
 
 
 def create_narrative_from_trace(trace: dict[str, Any]) -> str:
@@ -118,11 +115,8 @@ async def process_single_trace(trace: dict[str, Any]):
             llm=llm,
             driver=driver,
             embedder=embedder,
-            potential_schema={
-                "node_types": NODE_TYPES,
-                "relationship_types": REL_TYPES,
-                "patterns": PATTERNS,
-            },
+            entities=NODE_TYPES,
+            relations=REL_TYPES,
             on_error="IGNORE",
             from_pdf=False,
         )
@@ -142,7 +136,7 @@ async def knowledge_graph_parser():
     logger.info(f"Connecting to Kafka topic: {KAFKA_TOPIC} for STREAM processing")
 
     consumer = await retrieve_aio_kafka_consumer(
-        KAFKA_TOPIC, consumer_group="graph_rag_group_stream_v3"
+        KAFKA_TOPIC, consumer_group="graph_rag_group_stream_v5"
     )
     await consumer.start()
 
@@ -150,6 +144,10 @@ async def knowledge_graph_parser():
         logger.info("Listening for messages...")
         async for msg in consumer:
             try:
+                if msg is None or msg.value is None:
+                    logger.warning("Received empty message from Kafka, skipping.")
+                    continue
+
                 data = json.loads(msg.value.decode("utf-8"))
                 await process_single_trace(data)
                 await consumer.commit()

@@ -2,17 +2,29 @@ import os
 from typing import Optional
 
 import pandas as pd
+
+try:
+    from data_designer.essentials import (
+        CategorySamplerParams,
+        DataDesigner,
+        DataDesignerConfigBuilder,
+        LLMStructuredColumnConfig,
+        ModelConfig,
+        ModelProvider,
+        SamplerColumnConfig,
+        SamplerType,
+    )
+except ImportError:
+    CategorySamplerParams = None
+    DataDesigner = None
+    DataDesignerConfigBuilder = None
+    LLMStructuredColumnConfig = None
+    ModelConfig = None
+    ModelProvider = None
+    SamplerColumnConfig = None
+    SamplerType = None
+
 from pydantic import BaseModel, Field
-from data_designer.essentials import (
-    DataDesigner,
-    DataDesignerConfigBuilder,
-    SamplerColumnConfig,
-    SamplerType,
-    CategorySamplerParams,
-    ModelProvider,
-    ModelConfig,
-    LLMStructuredColumnConfig,
-)
 
 
 class MetadataItem(BaseModel):
